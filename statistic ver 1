@@ -1,0 +1,139 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:fl_chart/fl_chart.dart';
+import 'package:flutter/material.dart';
+
+class PM1 extends StatefulWidget {
+  const PM1({Key? key}) : super(key: key);
+
+  @override
+  _PM1State createState() => _PM1State();
+}
+
+class _PM1State extends State<PM1> {
+  List<FlSpot> spots = [];
+  bool isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    fetchDataFromFirestore();
+  }
+
+  Future<void> fetchDataFromFirestore() async {
+    final now = DateTime.now();
+    final oneHourAgo = now.subtract(Duration(hours: 1));
+
+    try {
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('EspData')
+          .where('timestamp', isGreaterThan: oneHourAgo)
+          .orderBy('timestamp')
+          .get();
+
+      final List<FlSpot> fetchedSpots = querySnapshot.docs.map((doc) {
+        final data = doc.data() as Map<String, dynamic>;
+        final timestamp = (data['timestamp'] as Timestamp).toDate();
+        final pm25Value = data['PM25']?.toDouble() ?? 0.0;
+
+        final minutesSinceStart = timestamp.difference(oneHourAgo).inMinutes.toDouble();
+
+        return FlSpot(minutesSinceStart, pm25Value);
+      }).toList();
+
+      setState(() {
+        spots = fetchedSpots;
+        isLoading = false;
+      });
+    } catch (e) {
+      print('Error fetching data: $e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        backgroundColor: const Color.fromRGBO(178, 209, 238, 1),
+        body: Align(
+          alignment: Alignment.topCenter,
+          child: Container(
+            margin: const EdgeInsets.only(left: 20, right: 20),
+            padding: const EdgeInsets.only(left: 20, top: 20),
+            height: 400,
+            width: 400,
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.only(
+                  bottomLeft: Radius.circular(50),
+                  bottomRight: Radius.circular(50)), // Border container
+            ),
+            child: isLoading
+                ? Center(child: CircularProgressIndicator())
+                : AspectRatio(
+                    aspectRatio: 1,
+                    child: LineChart(
+                      LineChartData(
+                        lineBarsData: [
+                          LineChartBarData(
+                            spots: spots,
+                            isCurved: true,
+                            dotData: const FlDotData(show: true),
+                            color: Colors.blue,
+                            barWidth: 5,
+                            belowBarData: BarAreaData(
+                              show: true,
+                              color: Colors.blue.withOpacity(0.3),
+                            ),
+                          ),
+                        ],
+                        minX: 0,
+                        maxX: 60, // Assuming data points cover a 60-minute range
+                        minY: 0,
+                        maxY: 500,
+                        borderData: FlBorderData(
+                          show: true,
+                          border: const Border(
+                            bottom: BorderSide(color: Colors.black),
+                            right: BorderSide(color: Colors.black),
+                            top: BorderSide(color: Colors.transparent),
+                            left: BorderSide(color: Colors.transparent),
+                          ),
+                        ),
+                        titlesData: FlTitlesData(
+                          show: true,
+                          bottomTitles: AxisTitles(
+                            axisNameWidget: const Text('Menit'),
+                            sideTitles: SideTitles(
+                              showTitles: true,
+                              reservedSize: 30,
+                              getTitlesWidget: (value, meta) {
+                                return Text(value.toInt().toString());
+                              },
+                            ),
+                          ),
+                          rightTitles: AxisTitles(
+                            sideTitles: SideTitles(
+                              showTitles: true,
+                              reservedSize: 30,
+                              getTitlesWidget: (value, meta) {
+                                return Text(value.toInt().toString());
+                              },
+                            ),
+                          ),
+                          leftTitles: const AxisTitles(
+                            sideTitles: SideTitles(
+                              showTitles: false,
+                            ),
+                          ),
+                          topTitles: const AxisTitles(
+                            sideTitles: SideTitles(
+                              showTitles: false,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+          ),
+        ),
+      );
+}
+
